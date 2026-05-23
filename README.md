@@ -1,194 +1,97 @@
-# QFw Slurm Docker Cluster
+# [QFw]-SLURM Environment
 
-This directory contains a Docker-based Slurm cluster that has been extended to
-serve as a QFw and DEFw development and profiling environment.
+[QFw]-SLURM Environment is a Docker Compose based [Slurm] cluster for [QFw]
+development, integration testing, and profiling. It packages the heavy runtime
+stack in the image, while keeping the active [QFw] development tree on a host
+mount.
 
-The intent is to keep the heavy runtime stack inside the image and keep the
-active QFw workspace on the host. That gives you:
+The environment supports two common workflows:
 
-- a repeatable Slurm test cluster
-- a repeatable MPI/libfabric toolchain
-- an image-contained QFw install that can run without a mounted checkout
-- prebuilt QFw circuit runners for TNQVM and NWQ-Sim
-- disposable containers
-- host-persistent source, virtual environments, and build artifacts
+- Run the image-contained [QFw] directly from `/opt/qfw/qhpc/QFw`.
+- Mount a development [QFw] checkout at `/workspace/qfw-container-base/QFw` and
+  build or run that checkout inside the [Slurm] containers.
 
-## What This Image Contains
+This is not meant to model production HPC performance. It is meant to give a
+repeatable [Slurm], MPI, [libfabric], [DEFw], and [QFw] test environment.
 
-The image builds and installs these layers:
+## Table Of Contents
 
-- Slurm
-- system Python 3.12 from Rocky 10
-- `environment-modules`
-- system GCC toolchain from Rocky 10
-- `libfabric`
-- OpenMPI with the bundled PRRTE checkout
-- OSU Micro-Benchmarks
-- QFw under `/opt/qfw/qhpc/QFw`
-- a QFw Python virtual environment under `/opt/qfw/qhpc/venv`
-- QFw build and install artifacts under `/opt/qfw/qhpc/build/image` and
-  `/opt/qfw/qhpc/install/image`
-- prebuilt `circuit_runner.tnqvm` and `circuit_runner.nwqsim` on `PATH`
-- QFw-facing convenience packages:
-  - `cmake`
-  - `gcc-gfortran`
-  - `openblas-devel`
-  - `swig`
-  - `scons`
+- [Build The Environment](#build-the-environment)
+- [Start And Use The Cluster](#start-and-use-the-cluster)
+- [Build And Run QFw](#build-and-run-qfw)
+- [Design Overview](#design-overview)
+- [Detailed Reference](#detailed-reference)
+- [Troubleshooting](#troubleshooting)
 
-The image also installs runtime modulefiles for:
+## Build The Environment
 
-- `cmake`
-- `openblas`
-- `swig`
-- `gcc-native/13.2`
-- `gcc/13.2`
-- `rocm`
+<details open>
+<summary>Build a local image or configure a pulled image</summary>
 
-The modulefiles are for interactive use inside the container. They are not used
-to control Docker build correctness. The MPI stack is built with explicit GCC 13
-environment variables in the Dockerfile.
+All commands assume you are in this repository:
 
-The image-level runtime environment includes OpenMPI, libfabric, and the
-image-contained QFw circuit runner paths in `PATH` and `LD_LIBRARY_PATH`.
-Do not globally source `qfw_activate` from the image entrypoint; activation is
-still an explicit shell action because it rewires the QFw Python environment.
-
-## Cluster Topology
-
-`docker-compose.yml` starts these services:
-
-- `mysql`: Slurm accounting database
-- `slurmdbd`: Slurm database daemon
-- `slurmctld`: Slurm controller
-- `slurmrestd`: Slurm REST daemon
-- `c1` through `c8`: compute nodes running `slurmd`
-
-By default, this gives you an eight-node Slurm cluster.
-
-Each Slurm service runs with Docker `init: true` so exited child processes are
-reaped correctly inside the containers.
-
-## Repository Files That Feed The Containers
-
-The image build copies these repository files into `/etc/slurm`:
-
-- `slurm.conf`
-- `slurmdbd.conf`
-- `gres.conf`
-- `rest.conf`
-- `cgroup.conf`
-
-Those copies happen in [Dockerfile](Dockerfile) during `docker build`.
-
-There is an important runtime detail:
-
-- the compose stack mounts the named volume `etc_slurm` on `/etc/slurm`
-- once that volume exists, it overrides the image-baked `/etc/slurm` files
-
-That means:
-
-- changing `slurm.conf` in this repository updates the repository source
-- rebuilding the image updates the image contents
-- but an existing running cluster still uses the persistent `etc_slurm` volume until you refresh or recreate it
-
-This is why the repo copy of `slurm.conf` can differ from the file you see inside `slurmctld`.
-
-## Host Workspace Layout
-
-The cluster bind-mounts the host workspace configured in `qfw-install.env`
-through `QFW_CONTAINER_BASE` into the containers at:
-
-```text
-/workspace/qfw-container-base
+```bash
+cd QFw-SLURM-Cluster
 ```
 
-By default, `./do_configure.sh` creates:
-
-```text
-../qfw-container-base
-```
-
-The intended host layout under that directory is:
-
-```text
-qfw-container-base/
-  QFw/          # active source checkout
-  venv/         # container-created persistent Python venv
-  build/        # persistent build tree
-  install/      # persistent install tree
-  rocm/         # optional mounted ROCm tree for module load rocm
-```
-
-This mount is present in all Slurm service containers:
-
-- `slurmdbd`
-- `slurmctld`
-- `slurmrestd`
-- `c1` through `c8`
-
-That means you can edit QFw on the host and immediately see the changes inside
-the containers without rebuilding the image.
-
-The mounted QFw checkout is optional for users who only want to run the
-image-contained QFw. It is still the normal development path. If the mounted
-checkout builds its own circuit runners, its `qfw_activate` prepends its paths
-and those runners win. If it does not, the prebuilt image runners remain
-available from `/opt/qfw/qhpc/QFw/bin`.
-
-## Prerequisites
-
-You need:
+Required host tools:
 
 - Docker
 - Docker Compose
 
-All commands below assume you are in:
+Build the image locally with the default settings:
 
 ```bash
-cd QFw-SLURM-Cluster
-```
-
-## Quick Start
-
-If you want the shortest exact sequence to install, build, and run:
-
-```bash
-cd QFw-SLURM-Cluster
 ./do_configure.sh
 ./do_build.sh
-./do_startup.sh
-./do_ssh.sh
 ```
 
-Inside `slurmctld`, verify the cluster:
+If `--prefix` is omitted, `do_configure.sh` creates and uses:
 
-```bash
-sinfo
-scontrol show nodes
+```text
+./shared-dir
 ```
 
-## Run A Prebuilt GHCR Image
-
-Use this path when someone has already pushed a QFw Slurm image to GHCR and
-you want to run it locally without rebuilding the image.
-
-For a public image:
+Build with an explicit host mount and image name:
 
 ```bash
-cd QFw-SLURM-Cluster
+./do_configure.sh \
+  --prefix /path/to/shared-dir \
+  --image-name qfw-slurm-cluster \
+  --image-tag rocky10.1 \
+  --qfw-build-jobs 4
 
+./do_build.sh
+```
+
+Build and tag an image for GHCR:
+
+```bash
+./do_configure.sh \
+  --prefix /path/to/shared-dir \
+  --image ghcr.io/openqse/qfw-slurm-cluster:20260503-v1.0 \
+  --qfw-build-jobs 4
+
+./do_build.sh
+```
+
+Use an already-built image without rebuilding:
+
+```bash
 docker pull ghcr.io/openqse/qfw-slurm-cluster:20260503-v1.0
 
 ./do_configure.sh \
+  --prefix /path/to/shared-dir \
   --image ghcr.io/openqse/qfw-slurm-cluster:20260503-v1.0
 
 ./do_startup.sh
-./do_ssh.sh
 ```
 
-For a private image, log in to GHCR first with your GitHub username and a token
-that has `read:packages` access:
+Do not run `./do_build.sh` in the prebuilt-image workflow unless you intend to
+rebuild the image locally.
+
+For a private GHCR image, log in first with a GitHub token that has
+`read:packages` access:
 
 ```bash
 echo "${GHCR_TOKEN}" | docker login ghcr.io \
@@ -196,412 +99,33 @@ echo "${GHCR_TOKEN}" | docker login ghcr.io \
   --password-stdin
 ```
 
-Then use the same pull and startup flow:
+</details>
 
-```bash
-docker pull ghcr.io/openqse/qfw-slurm-cluster:20260503-v1.0
+## Start And Use The Cluster
 
-./do_configure.sh \
-  --image ghcr.io/openqse/qfw-slurm-cluster:20260503-v1.0
+<details open>
+<summary>Start, enter, inspect, and stop the [Slurm] cluster</summary>
 
-./do_startup.sh
-```
-
-This writes `IMAGE_NAME`, `IMAGE_TAG`, and `QFW_CONTAINER_BASE` into
-`qfw-install.env` and `.env`. Compose then starts containers from the pulled
-image instead of requiring a local build. Do not run `./do_build.sh` in this
-workflow unless you intentionally want to rebuild the image locally.
-
-The mounted workspace is still created on the host. By default it is:
-
-```bash
-../qfw-container-base
-```
-
-Use `--prefix` if you want a different host mount point:
-
-```bash
-./do_configure.sh \
-  --image ghcr.io/openqse/qfw-slurm-cluster:20260503-v1.0 \
-  --prefix /path/to/qfw-container-base
-```
-
-## Prepare The Host Workspace
-
-Before building or starting the containers, create the host-mounted workspace
-layout and write the install settings file:
-
-```bash
-./do_configure.sh
-```
-
-That script creates the configured `QFW_CONTAINER_BASE` directory and the
-persistent directories the containers expect:
-
-- `QFw/`
-- `venv/`
-- `build/`
-- `install/`
-- `benchmarks/`
-- `rocm/`
-
-It also checks whether `QFW_CONTAINER_BASE/QFw` already contains a QFw
-checkout. The venv is not created here because it should be created later from
-inside the container so it matches the container Python version.
-
-## Build The Image With The Helper
-
-To build the configured image without typing the raw `docker build` command:
-
-```bash
-./do_build.sh
-```
-
-If `qfw-install.env` does not exist yet, this helper runs `./do_configure.sh`
-with its default settings first and then builds the image.
-
-The image-contained QFw build uses `QFW_BUILD_JOBS=4` by default. The helper
-writes this value to `qfw-install.env` and passes it to `docker build`.
-
-Set a different value during configuration if your host needs more or fewer
-parallel build jobs:
-
-```bash
-./do_configure.sh --qfw-build-jobs 2
-./do_build.sh
-```
-
-If you want a clean rebuild from scratch and want the current compose stack
-removed first:
-
-```bash
-./do_build.sh --force
-```
-
-This stops and removes the current compose stack through `./do_stop.sh delete`
-and then runs `docker build --no-cache`. It does not automatically start the
-cluster again.
-
-If containers already exist for the same image tag after a rebuild, recreate
-them so Docker does not keep using the old containers:
-
-```bash
-./do_restart.sh --force-recreate
-```
-
-## Docker For Beginners
-
-This section uses this Slurm cluster as the example and focuses on the Docker
-commands you are most likely to need day to day.
-
-### Build the image
-
-This turns the `Dockerfile` into a reusable local image using the values from
-`qfw-install.env`:
-
-```bash
-./do_configure.sh
-./do_build.sh
-```
-
-Think of this as "compile the container image from the recipe in this
-directory."
-
-### Rebuild from scratch
-
-This ignores Docker cache and rebuilds every layer:
-
-```bash
-./do_configure.sh
-./do_build.sh --force
-```
-
-Use this when:
-
-- you suspect stale Docker cache
-- you changed an early image layer
-- you want a clean validation build
-
-### Start the cluster
-
-This creates and starts all services from `docker-compose.yml` using the values
-from `qfw-install.env`:
-
-```bash
-docker compose --env-file qfw-install.env up -d
-```
-
-Use `-d` for detached mode so the cluster keeps running in the background.
-
-### Start and register the cluster with the helper
-
-This is the easiest way to bring the cluster up for normal use:
+Start the cluster and register it with [Slurm]DBD:
 
 ```bash
 ./do_startup.sh
 ```
 
-It:
-
-1. starts the compose services
-2. waits for `slurmdbd`
-3. registers the Slurm cluster
-
-### Show what is running
-
-See which containers are up:
-
-```bash
-docker compose --env-file qfw-install.env ps
-```
-
-See local QFw Slurm images:
-
-```bash
-./do_images.sh
-```
-
-Useful image listing variations:
-
-```bash
-./do_images.sh --configured
-./do_images.sh --all
-./do_images.sh --dangling
-./do_images.sh --repo ghcr.io/openqse/qfw-slurm-cluster
-./do_images.sh --repo ghcr.io/openqse/qfw-slurm-cluster --tag 20260503-v1.0
-./do_images.sh --configured --quiet
-./do_images.sh --configured --history
-```
-
-The helper lists local Docker images only. It does not query GHCR or any other
-remote registry. The `--history` mode shows Docker layer history for one local
-image, which is useful before pushing to GHCR because GHCR has a 10 GB limit
-per layer and an upload timeout.
-
-### View logs
-
-Follow all compose service logs:
-
-```bash
-docker compose --env-file qfw-install.env logs -f
-```
-
-View logs for one service:
-
-```bash
-docker compose --env-file qfw-install.env logs -f slurmctld
-docker compose --env-file qfw-install.env logs -f c5
-```
-
-### Enter a running container
-
-Open an interactive shell inside a container:
-
-```bash
-./do_ssh.sh
-./do_ssh.sh c1
-```
-
-Use this when you want to run `sinfo`, `salloc`, `module load`, or inspect files
-inside the container.
-
-### Stop the cluster
-
-Stop running containers without deleting them:
-
-```bash
-docker compose --env-file qfw-install.env stop
-```
-
-Bring them back later:
-
-```bash
-docker compose --env-file qfw-install.env start
-```
-
-### Restart the cluster
-
-Restart all compose services:
-
-```bash
-docker compose --env-file qfw-install.env restart
-```
-
-This is useful after config refreshes.
-
-Use the helper when you want the same behavior:
-
-```bash
-./do_restart.sh
-```
-
-If you rebuilt the image and need existing containers recreated from the new
-image, use:
-
-```bash
-./do_restart.sh --force-recreate
-```
-
-That runs:
-
-```bash
-docker compose --env-file qfw-install.env up -d --force-recreate
-```
-
-### Remove the cluster but keep images
-
-Remove the running containers and network, but keep named volumes unless you add
-`-v`:
-
-```bash
-docker compose --env-file qfw-install.env down
-```
-
-### Factory reset the cluster
-
-Remove containers and named volumes:
-
-```bash
-docker compose --env-file qfw-install.env down -v
-```
-
-This is the closest thing to a factory reset for this setup. It wipes the
-persistent Slurm volumes, including the live `/etc/slurm` volume.
-
-After that, recreate the cluster from the current repo and image:
-
-```bash
-./do_startup.sh
-```
-
-### Refresh repo config into running containers
-
-If you changed `slurm.conf`, `gres.conf`, or related Slurm config files and do
-not want to rebuild the image:
-
-```bash
-./update_slurmfiles.sh slurm.conf
-./update_slurmfiles.sh slurm.conf gres.conf
-```
-
-This copies the selected repo files into `/etc/slurm` inside the running
-cluster and restarts the services.
-
-### Remove a local image
-
-If you want to delete a built image from your machine:
-
-```bash
-docker rmi ${IMAGE_NAME}:${IMAGE_TAG}
-```
-
-Do this only when you really want to free space or force a rebuild path.
-
-### Mental model
-
-The common workflow is:
-
-1. `./do_build.sh`
-2. `docker compose --env-file qfw-install.env up -d` or `./do_startup.sh`
-3. `./do_ssh.sh`
-4. work inside the running cluster
-5. `./update_slurmfiles.sh ...` for config-only changes
-6. `docker compose --env-file qfw-install.env down -v` when you want to fully reset the cluster state
-
-## Image Build Notes
-
-For the practical build, start, stop, reset, and log commands, use the
-`Docker For Beginners` section above.
-
-One additional image-specific note is useful here:
-
-If you want shell commands like `docker build -t ${IMAGE_NAME}:${IMAGE_TAG}` to
-use the same values as the helper scripts, export `qfw-install.env` into your shell first:
-
-```bash
-set -a
-source qfw-install.env
-set +a
-```
-
-### Compose-driven build
-
-If you prefer using compose and `qfw-install.env` instead of an explicit
-`docker build` command:
-
-```bash
-docker compose --env-file qfw-install.env build
-```
-
-Compose uses:
-
-- `SLURM_TAG` for the Slurm source tag
-- `QFW_BUILD_JOBS` for the image-contained QFw build parallelism
-- `IMAGE_NAME` for the runtime image repository name
-- `IMAGE_TAG` for the runtime image tag
-
-If you want compose to use the image built by hand, keep both `IMAGE_NAME` and
-`IMAGE_TAG` aligned with the image you built.
-
-### List local images
-
-Use the helper when you want to inspect local image variants without typing the
-raw `docker image ls` command:
-
-```bash
-./do_images.sh
-```
-
-By default it shows common QFw Slurm repositories, including the configured
-`IMAGE_NAME` from `qfw-install.env`. To show the exact configured image:
-
-```bash
-./do_images.sh --configured
-```
-
-To list a specific local repository or tag:
-
-```bash
-./do_images.sh --repo ghcr.io/openqse/qfw-slurm-cluster
-./do_images.sh --repo ghcr.io/openqse/qfw-slurm-cluster --tag 20260503-v1.0
-```
-
-To inspect other local Docker state:
-
-```bash
-./do_images.sh --all
-./do_images.sh --dangling
-./do_images.sh --digests
-./do_images.sh --include-intermediate
-```
-
-Before pushing a large image to GHCR, inspect its layer sizes:
-
-```bash
-./do_images.sh --configured --history
-./do_images.sh --repo ghcr.io/openqse/qfw-slurm-cluster \
-  --tag 20260503-v1.0 --history
-```
-
-GHCR allows up to 10 GB per layer and has an upload timeout. A total image
-larger than 10 GB can still push if each individual layer is below that limit.
-
-## Accessing the Cluster Interactively
-
-Open a shell in the Slurm controller:
+Enter the [Slurm] controller:
 
 ```bash
 ./do_ssh.sh
 ```
 
-Open a shell in a compute node:
+Enter a compute node:
 
 ```bash
 ./do_ssh.sh c1
 ./do_ssh.sh c2
 ```
 
-Once inside `slurmctld`, basic Slurm inspection looks like:
+Inspect [Slurm] from inside `slurmctld`:
 
 ```bash
 sinfo
@@ -609,112 +133,252 @@ scontrol show nodes
 squeue
 ```
 
-Expected `sinfo` shape:
+Run a simple [Slurm] command:
+
+```bash
+srun -N1 -n1 hostname
+```
+
+Allocate two nodes interactively:
+
+```bash
+salloc -N2 -n2
+srun hostname
+```
+
+Stop the cluster without deleting named volumes:
+
+```bash
+./do_stop.sh
+```
+
+Stop and remove containers plus named volumes:
+
+```bash
+./do_stop.sh delete
+```
+
+If you rebuild an image and need existing containers recreated from the new
+image:
+
+```bash
+./do_restart.sh --force-recreate
+```
+
+</details>
+
+## Build And Run [QFw]
+
+<details open>
+<summary>Build and run the development [QFw]</summary>
+
+This is the normal development path. `do_configure.sh` writes
+`QFW_CONTAINER_BASE` into `qfw-install.env` and `.env`. Docker Compose
+bind-mounts that host directory into every [Slurm] container at:
 
 ```text
-PARTITION AVAIL  TIMELIMIT  NODES  STATE NODELIST
-normal*      up 5-00:00:00      4   idle c[1-4]
-quantum      up   infinite      4   idle c[5-8]
+/workspace/qfw-container-base
 ```
 
-## Using the Module Utility
-
-The image includes `environment-modules`. The modulefiles live in:
+The expected development layout is:
 
 ```text
-/etc/modulefiles
+shared-dir/
+  QFw/          # active QFw checkout
+  venv/         # persistent Python venv created inside the container
+  build/        # persistent QFw build tree
+  install/      # persistent QFw install tree
+  benchmarks/   # persistent benchmark outputs
+  rocm/         # optional ROCm prefix for ROCm/HIP builds
 ```
 
-Typical usage:
+1. Configure the host mount and clone [QFw]:
 
 ```bash
-module use /etc/modulefiles
-module avail
-module load gcc-native/13.2
-module load cmake
-module load openblas
-module load swig
+QFW_CONTAINER_BASE=/path/to/shared-dir
+
+./do_configure.sh --prefix "${QFW_CONTAINER_BASE}"
+
+git clone --recursive git@github.com:openQSE/QFw.git \
+  "${QFW_CONTAINER_BASE}/QFw"
 ```
 
-Compatibility alias:
+2. Start the cluster and SSH into `slurmctld`:
 
 ```bash
-module load gcc/13.2
+./do_startup.sh
+./do_ssh.sh
 ```
 
-ROCm is treated as a mounted prefix. By default the modulefile expects:
-
-```text
-/workspace/qfw-container-base/rocm
-```
-
-or you can override it:
+3. Build [QFw] inside `slurmctld`:
 
 ```bash
-export QFW_ROCM_ROOT=/workspace/qfw-container-base/rocm
-module use /etc/modulefiles
-module load rocm
-```
-
-## Persistent Python Virtual Environment
-
-The recommended model is:
-
-- create the venv inside the container
-- store it on the mounted host path
-- recreate it whenever you switch the container Python version
-
-Example from inside `slurmctld`:
-
-```bash
-rm -rf /workspace/qfw-container-base/venv
 python3 -m venv /workspace/qfw-container-base/venv
 source /workspace/qfw-container-base/venv/bin/activate
-python --version
+
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install \
+  -r /workspace/qfw-container-base/QFw/setup/build-requirements.txt
+
+cd /workspace/qfw-container-base/QFw/setup
+./qfw_configure -c config/qfw_config_sample_container.yaml
+./qfw_build.sh --python --defw
 ```
 
-Because the venv directory is on the host mount, it survives container removal.
-That also means an older venv can outlive an image rebuild. If you rebuild the
-image with a different Python version, remove and recreate the mounted venv so
-it matches the current container interpreter.
+4. Activate [QFw]:
 
-## QFw Source Workflow
+```bash
+source /workspace/qfw-container-base/QFw/setup/qfw_activate
+```
 
-The image already includes a runnable QFw install at:
+5. Run the [QFw] MPI smoke test:
+
+```bash
+cd /workspace/qfw-container-base/QFw/examples
+./qfw_mpi_smoke.sh
+```
+
+6. Deactivate [QFw]:
+
+```bash
+qfw_deactivate
+```
+
+TNQVM and NWQ-Sim are already built in the image. The development checkout can
+use those runners without rebuilding them. Rebuild them only when you need
+development versions:
+
+```bash
+cd /workspace/qfw-container-base/QFw/setup
+source /workspace/qfw-container-base/venv/bin/activate
+
+./qfw_build.sh --tnqvm --nwqsim
+```
+
+If the mounted [QFw] checkout has its own build artifacts, `qfw_activate`
+prepends the mounted checkout paths, so development artifacts take precedence
+over the built-in image artifacts.
+
+</details>
+
+<details>
+<summary>Use the built-in image [QFw]</summary>
+
+Use this path when you want to run the image-contained [QFw] without a mounted
+development checkout. The built-in [QFw] lives at:
 
 ```text
 /opt/qfw/qhpc/QFw
 ```
-
-For a quick image-contained QFw shell:
 
 ```bash
 cd /opt/qfw/qhpc/QFw
 source /opt/qfw/qhpc/QFw/setup/qfw_activate
 ```
 
-The active QFw checkout should live at:
+The image exposes [OpenMPI], [libfabric], built-in [QFw], and prebuilt
+circuit-runner paths in `PATH` and `LD_LIBRARY_PATH`.
 
-```text
-/workspace/qfw-container-base/QFw
+</details>
+
+## Design Overview
+
+<details>
+<summary>High-level architecture</summary>
+
+The environment has three important layers:
+
+- Host workspace: persistent source, build outputs, installs, and venv.
+- Docker image: [Slurm], [OpenMPI], [libfabric], modules, and image-contained [QFw].
+- Compose cluster: [Slurm] services and compute nodes using the image and mount.
+
+```mermaid
+flowchart TB
+    host["Host workspace\nQFW_CONTAINER_BASE"] -->|bind mount| mount["/workspace/qfw-container-base\nQFw, venv, build, install, rocm"]
+
+    subgraph img["Docker image"]
+        slurm["Slurm runtime"]
+        mpi["libfabric + OpenMPI/PRRTE"]
+        image_qfw["/opt/qfw/qhpc/QFw\nprebuilt QFw + circuit runners"]
+    end
+
+    subgraph cluster["Docker Compose cluster"]
+        mysql["mysql"]
+        dbd["slurmdbd"]
+        ctl["slurmctld"]
+        rest["slurmrestd\nlocalhost:6820"]
+        subgraph nodes["compute nodes"]
+            c1["c1..c4\nnormal partition"]
+            c5["c5..c8\nquantum partition"]
+        end
+    end
+
+    mount --> ctl
+    mount --> c1
+    mount --> c5
+    image_qfw --> ctl
+    image_qfw --> c1
+    image_qfw --> c5
+    mysql --> dbd
+    dbd --> ctl
+    ctl --> c1
+    ctl --> c5
+    ctl --> rest
 ```
 
-Typical interactive flow inside `slurmctld`:
+[QFw] runtime tests commonly use a heterogeneous [Slurm] allocation. The
+application runs on group 0, while resource-manager and QPM services run on
+group 1. QPM services may launch simulators through MPI/PRTE or talk directly
+to a device or service backend.
 
-```bash
-cd /workspace/qfw-container-base/QFw
-source /workspace/qfw-container-base/venv/bin/activate
-module use /etc/modulefiles
-module load gcc-native/13.2 cmake openblas swig
+QPM service examples include [TNQVM] and [NWQ-Sim].
+
+```mermaid
+flowchart LR
+    subgraph g0["Slurm het-group 0"]
+        app["QFw application\nQiskit/PennyLane/test script"]
+    end
+
+    subgraph g1["Slurm het-group 1"]
+        resmgr["QFw resource manager"]
+        qpm["QPM service\nTNQVM, NWQ-Sim, IQM, etc."]
+        dvm["PRTE DVM\noptional MPI launch layer"]
+        target["Simulator or hardware backend"]
+    end
+
+    app --> resmgr
+    resmgr --> qpm
+    qpm --> dvm
+    dvm --> target
+    qpm -.-> target
 ```
 
-Then build or run QFw directly from the mounted source tree.
+</details>
 
-Any file edited on the host is visible immediately in the container.
+## Detailed Reference
 
-The mounted development checkout can reuse the image-built circuit runners
-without rebuilding TNQVM or NWQ-Sim. The image exposes the required binary and
-library paths globally:
+<details>
+<summary>What the image contains</summary>
+
+The image builds and installs:
+
+- [Slurm]
+- Rocky 10 system Python 3.12
+- `environment-modules`
+- GCC toolchain from Rocky 10
+- [libfabric]
+- [OpenMPI] with the bundled [PRRTE] checkout
+- OSU Micro-Benchmarks
+- [QFw] under `/opt/qfw/qhpc/QFw`
+- [QFw] Python venv under `/opt/qfw/qhpc/venv`
+- [QFw] build and install artifacts under `/opt/qfw/qhpc/build/image` and
+  `/opt/qfw/qhpc/install/image`
+- prebuilt [TNQVM] and [NWQ-Sim] circuit runners:
+  `circuit_runner.tnqvm` and `circuit_runner.nwqsim`
+- [QFw] build dependencies such as `cmake`, `gcc-gfortran`, `openblas-devel`,
+  `swig`, and `scons`
+
+The image-level runtime environment includes:
 
 ```text
 /opt/qfw/openmpi/bin
@@ -728,279 +392,341 @@ library paths globally:
 /opt/qfw/qhpc/install/image/NWQSIM/lib
 ```
 
-If the mounted checkout is configured with its own build paths, QFw prepends
-those paths during activation, so development artifacts take precedence over
-the image artifacts.
+`qfw_activate` is still explicit. The image entrypoint does not globally source
+it because activation rewires the Python environment.
 
-## Shared Job Directories
+</details>
 
-Two shared locations matter:
+<details>
+<summary>Helper scripts and generated files</summary>
 
-- `/data`
-  - backed by the named `slurm_jobdir` volume
-  - good for Slurm job outputs and cluster-visible files
-- `/mnt`
-  - backed by `./shared-dir`
-  - good for host-managed scripts you want visible in containers
+`./do_configure.sh` prepares the host workspace and writes:
 
-## Submitting Jobs
+- `qfw-install.env`, used by helper scripts
+- `.env`, used by Docker Compose
 
-### Simple `sbatch`
+Useful options:
 
-From `slurmctld`:
+```bash
+./do_configure.sh --help
+./do_configure.sh --dry-run
+./do_configure.sh --prefix /path/to/shared-dir
+./do_configure.sh --image ghcr.io/openqse/qfw-slurm-cluster:20260503-v1.0
+./do_configure.sh --qfw-build-jobs 4
+```
+
+`./do_build.sh` builds the configured image:
+
+```bash
+./do_build.sh
+./do_build.sh --dry-run
+./do_build.sh --force
+```
+
+`--force` stops and removes the current Compose stack with
+`./do_stop.sh delete` and rebuilds with `docker build --no-cache`.
+
+`./do_startup.sh` starts the Compose services, waits for `slurmdbd`, and runs
+`./register_cluster.sh`.
+
+`./do_images.sh` lists local image variants:
+
+```bash
+./do_images.sh
+./do_images.sh --configured
+./do_images.sh --configured --history
+./do_images.sh --repo ghcr.io/openqse/qfw-slurm-cluster --tag 20260503-v1.0
+```
+
+</details>
+
+<details>
+<summary>Cluster topology</summary>
+
+`docker-compose.yml` starts:
+
+- `mysql`: [Slurm] accounting database
+- `slurmdbd`: [Slurm] database daemon
+- `slurmctld`: [Slurm] controller
+- `slurmrestd`: [Slurm] REST daemon, exposed on `localhost:6820`
+- `c1` through `c8`: compute nodes running `slurmd`
+
+The current [Slurm] config defines:
+
+- `normal`: `c1` through `c4`
+- `quantum`: `c5` through `c8`
+
+The quantum nodes carry example `Gres` and `Features` values for QPU-oriented
+testing.
+
+Each [Slurm] service runs with Docker `init: true` so exited child processes are
+reaped correctly inside containers.
+
+</details>
+
+<details>
+<summary>Persistent mounts and volumes</summary>
+
+The host [QFw] workspace is mounted into all [Slurm] service containers:
+
+```text
+${QFW_CONTAINER_BASE}:/workspace/qfw-container-base
+```
+
+Other important shared paths are:
+
+- `/data`: backed by the `slurm_jobdir` named volume, useful for [Slurm] job
+  outputs.
+- `/mnt`: backed by `./shared-dir`, useful for host-managed scripts visible in
+  the containers.
+- `/etc/slurm`: backed by the `etc_slurm` named volume after the cluster is
+  created.
+
+The `/etc/slurm` volume is important. The Docker image copies repository [Slurm]
+configuration into `/etc/slurm` during build, but once the named volume exists,
+the volume overrides the image-baked files. Use `./update_slurmfiles.sh` to
+refresh live [Slurm] config without rebuilding:
+
+```bash
+./update_slurmfiles.sh slurm.conf
+./update_slurmfiles.sh slurm.conf gres.conf rest.conf
+```
+
+If you change the configured host mount path after containers already exist,
+recreate the containers:
+
+```bash
+./do_restart.sh --force-recreate
+```
+
+For a full reset, including named volumes:
+
+```bash
+./do_stop.sh delete
+./do_startup.sh
+```
+
+</details>
+
+<details>
+<summary>Modules, ROCm, and MPI checks</summary>
+
+The image includes `environment-modules` and modulefiles in:
+
+```text
+/etc/modulefiles
+```
+
+Typical interactive use:
+
+```bash
+module use /etc/modulefiles
+module avail
+module load gcc-native/13.2 cmake openblas swig
+```
+
+ROCm is treated as an optional mounted prefix. The default path is:
+
+```text
+/workspace/qfw-container-base/rocm
+```
+
+Override it if needed:
+
+```bash
+export QFW_ROCM_ROOT=/workspace/qfw-container-base/rocm
+module use /etc/modulefiles
+module load rocm
+```
+
+Run an MPI sanity check through [Slurm]:
+
+```bash
+srun -N2 -n2 \
+  /opt/qfw/osu-micro-benchmarks/libexec/osu-micro-benchmarks/mpi/pt2pt/osu_latency
+```
+
+Run a direct `mpirun` sanity check:
+
+```bash
+export OMPI_ALLOW_RUN_AS_ROOT=1
+export OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
+
+mpirun -np 2 \
+  /opt/qfw/osu-micro-benchmarks/libexec/osu-micro-benchmarks/mpi/pt2pt/osu_latency
+```
+
+Use `srun` when [Slurm] should control placement. Use `mpirun` for direct MPI
+sanity checks inside a container shell.
+
+</details>
+
+<details>
+<summary>Submitting jobs and using REST</summary>
+
+Submit a simple batch job from inside `slurmctld`:
 
 ```bash
 cd /data
 sbatch --wrap="hostname"
-```
-
-Inspect output:
-
-```bash
 cat /data/slurm-<jobid>.out
 ```
 
-### Use a script from the host-mounted shared directory
-
-Example:
+Submit a script from the host-managed shared directory:
 
 ```bash
 sbatch /mnt/simple.sbatch
 ```
 
-### Run a command immediately with `srun`
+Run commands immediately:
 
 ```bash
 srun -N1 -n1 hostname
-```
-
-### Allocate nodes interactively with `salloc`
-
-Request one node:
-
-```bash
-salloc -N1 -n1
-```
-
-Request both nodes:
-
-```bash
-salloc -N2 -n2
-```
-
-Then launch commands inside the allocation:
-
-```bash
-srun hostname
 srun -N2 -n2 hostname
 ```
 
-Inspect the allocation:
-
-```bash
-squeue
-scontrol show job <jobid>
-```
-
-## Running Across Multiple Nodes
-
-This cluster starts with eight compute nodes: `c1` through `c8`.
-
-Example:
-
-```bash
-srun -N2 -n2 hostname
-```
-
-You should see one rank land on each node.
-
-For MPI-style tests from inside the cluster:
-
-```bash
-export PATH=/opt/qfw/openmpi/bin:$PATH
-export LD_LIBRARY_PATH=/opt/qfw/openmpi/lib:/opt/qfw/libfabric/lib:$LD_LIBRARY_PATH
-
-srun -N2 -n2 /opt/qfw/osu-micro-benchmarks/libexec/osu-micro-benchmarks/mpi/pt2pt/osu_latency
-```
-
-For plain `mpirun` tests:
-
-```bash
-export PATH=/opt/qfw/openmpi/bin:$PATH
-export LD_LIBRARY_PATH=/opt/qfw/openmpi/lib:/opt/qfw/libfabric/lib:$LD_LIBRARY_PATH
-export OMPI_ALLOW_RUN_AS_ROOT=1
-export OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
-
-mpirun -np 2 /opt/qfw/osu-micro-benchmarks/libexec/osu-micro-benchmarks/mpi/pt2pt/osu_latency
-```
-
-Use `srun` when you want Slurm to control placement. Use `mpirun` for direct MPI
-sanity checks inside a container shell.
-
-## Adding More Nodes
-
-Adding nodes requires updating both the compose topology and the Slurm config.
-
-### 1. Add a new service in `docker-compose.yml`
-
-Use any of the existing `c1` through `c8` services as a template and add `c9`,
-`c10`, and so on.
-
-Each new node should:
-
-- use the same image
-- run `command: ["slurmd"]`
-- join `slurm-network`
-- mount the same Slurm, log, `/data`, and QFw workspace volumes
-
-### 2. Update `slurm.conf`
-
-Add the new node definition and update the partition:
-
-```text
-NodeName=c3 CPUs=...
-PartitionName=normal Nodes=c[1-3] Default=YES MaxTime=5-00:00:00 State=UP
-```
-
-### 3. Push the updated config into the running cluster
-
-```bash
-./update_slurmfiles.sh slurm.conf
-docker compose --env-file qfw-install.env restart
-```
-
-If the cluster metadata also needs to be refreshed, rerun:
-
-```bash
-./register_cluster.sh
-```
-
-## Updating Slurm Configuration Without Rebuilding
-
-You can change these repository files without rebuilding the image:
-
-- `slurm.conf`
-- `slurmdbd.conf`
-- `gres.conf`
-- `rest.conf`
-- `cgroup.conf`
-
-To push updated repo copies into the running cluster, use:
-
-```bash
-./update_slurmfiles.sh slurm.conf
-```
-
-You can pass more than one file:
-
-```bash
-./update_slurmfiles.sh slurm.conf gres.conf rest.conf
-```
-
-`update_slurmfiles.sh` does two things:
-
-1. copies the selected repo files into `/etc/slurm` inside `slurmctld`
-2. runs `docker compose --env-file qfw-install.env restart`
-
-That is the normal way to refresh config in a running cluster without rebuilding
-the image.
-
-### Verifying the live config
-
-Check the file inside the running controller:
-
-```bash
-docker exec -it slurmctld bash -lc 'cat /etc/slurm/slurm.conf'
-```
-
-Check the live scheduler view:
-
-```bash
-docker exec -it slurmctld bash -lc 'sinfo'
-docker exec -it slurmctld bash -lc 'scontrol show partition'
-docker exec -it slurmctld bash -lc 'scontrol show nodes'
-```
-
-### When a rebuild is actually needed
-
-Rebuild the image only when you change something that is part of the image
-itself, for example:
-
-- `Dockerfile`
-- installed packages
-- source-built dependencies like `libfabric` or OpenMPI
-- modulefiles under `modulefiles/`
-
-For plain Slurm config changes, use `./update_slurmfiles.sh ...` instead of
-rebuilding.
-
-## REST API
-
-`slurmrestd` is exposed on:
+The [Slurm] REST daemon is exposed on:
 
 ```text
 http://localhost:6820
 ```
 
-The `rest-testing/` directory contains example scripts and client code for
-interacting with the REST API.
+The `rest-testing/` directory contains example REST scripts and client code.
 
-## Notes and Caveats
+</details>
 
-- This is a Docker-based virtual cluster, not a hardware-faithful HPC system.
-- It is useful for framework debugging, integration testing, and profiling
-  software overhead.
-- It will not reproduce real production interconnect behavior.
-- The image patches Slurm's completion profile script so it exits early in
-  non-interactive shells. This keeps SSH-launched QFw commands from failing
-  before PRTE startup while preserving completion for interactive shells.
-- The compose stack shares `/root/.ssh` across Slurm containers and starts
-  `sshd`, so root-to-root SSH between containers works for QFw launch paths.
+<details>
+<summary>Image names, GHCR, and local image inspection</summary>
 
-## Typical End-to-End Session
+Docker image repository names must be lowercase and may contain path components
+separated by `/`, using letters, digits, `.`, `_`, and `-`.
 
-Build:
+Good examples:
 
-```bash
-./do_build.sh
+```text
+qfw-slurm-cluster:rocky10.1
+ghcr.io/openqse/qfw-slurm-cluster:20260503-v1.0
 ```
 
-Start and register:
+Inspect the configured local image:
 
 ```bash
-./do_startup.sh
+./do_images.sh --configured
 ```
 
-Enter the controller:
+Inspect image layer sizes before pushing to GHCR:
+
+```bash
+./do_images.sh --configured --history
+```
+
+GHCR allows up to 10 GB per layer and has an upload timeout. A total image can
+be larger than 10 GB if each individual layer is below the layer limit.
+
+</details>
+
+<details>
+<summary>Adding nodes or changing [Slurm] config</summary>
+
+To add more compute nodes:
+
+1. Add a new service to `docker-compose.yml` using `c1` through `c8` as a
+   template.
+2. Add the node to `slurm.conf`.
+3. Refresh the live cluster config.
+
+Example refresh:
+
+```bash
+./update_slurmfiles.sh slurm.conf
+docker compose --env-file qfw-install.env restart
+./register_cluster.sh
+```
+
+Rebuild the image only when you change image contents, such as:
+
+- `Dockerfile`
+- installed packages
+- source-built dependencies such as [libfabric] or [OpenMPI]
+- modulefiles under `modulefiles/`
+
+For plain [Slurm] config changes, use `./update_slurmfiles.sh ...`.
+
+</details>
+
+<details>
+<summary>Notes and caveats</summary>
+
+- This is a Docker-based virtual [Slurm] cluster, not a hardware-faithful HPC
+  system.
+- It is useful for [QFw] integration testing, launcher debugging, service
+  bring-up, and software-overhead profiling.
+- It will not reproduce production interconnect behavior.
+- The image patches [Slurm]'s completion profile script so non-interactive shells
+  do not fail before [QFw] SSH and [PRRTE] startup paths run.
+- The Compose stack shares `/root/.ssh` across [Slurm] containers and starts
+  `sshd`, so root-to-root SSH between containers works for [QFw] launch paths.
+- [QFw] does not require a shared host filesystem for all internal infrastructure
+  paths, but some simulators may have their own file-sharing assumptions. For
+  example, multi-rank [NWQ-Sim] statevector dumps expect the dump path to be
+  visible to all MPI ranks.
+
+</details>
+
+## Troubleshooting
+
+<details>
+<summary>Common fixes</summary>
+
+If `qfw-install.env` is missing:
+
+```bash
+./do_configure.sh
+```
+
+If Compose still uses an old mount path:
+
+```bash
+./do_restart.sh --force-recreate
+```
+
+If [Slurm] config changes are not visible inside the running containers:
+
+```bash
+./update_slurmfiles.sh slurm.conf gres.conf rest.conf cgroup.conf
+```
+
+If a mounted Python venv came from an older image:
 
 ```bash
 ./do_ssh.sh
+rm -rf /workspace/qfw-container-base/venv
+python3 -m venv /workspace/qfw-container-base/venv
 ```
 
-Prepare environment:
+If Docker cache is suspect:
 
 ```bash
-module use /etc/modulefiles
-module load gcc-native/13.2 cmake openblas swig
-source /workspace/qfw-container-base/venv/bin/activate
-cd /workspace/qfw-container-base/QFw
+./do_build.sh --force
+./do_startup.sh
 ```
 
-Inspect cluster:
+If you only need to see what a helper would run:
 
 ```bash
-sinfo
-squeue
+./do_configure.sh --dry-run
+./do_build.sh --dry-run
+./do_startup.sh --dry-run
+./do_restart.sh --dry-run
 ```
 
-Allocate two nodes:
+</details>
 
-```bash
-salloc -N2 -n2
-```
-
-Run a multi-node command:
-
-```bash
-srun -N2 -n2 hostname
-```
+[DEFw]: https://github.com/openQSE/DEFw
+[libfabric]: https://github.com/ofiwg/libfabric
+[NWQ-Sim]: https://github.com/pnnl/NWQ-Sim
+[OpenMPI]: https://github.com/open-mpi/ompi
+[PRRTE]: https://github.com/openpmix/prrte
+[QFw]: https://github.com/openQSE/QFw
+[Slurm]: https://github.com/SchedMD/slurm
+[TNQVM]: https://github.com/ornl-qci/tnqvm
