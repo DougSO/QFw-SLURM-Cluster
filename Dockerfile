@@ -255,6 +255,68 @@ ENV PATH=${OMPI_PREFIX}/bin:${LIBFABRIC_PREFIX}/bin:${QFW_IMAGE_BASE}/QFw/bin:${
 
 ENV LD_LIBRARY_PATH=${OMPI_PREFIX}/lib:${LIBFABRIC_PREFIX}/lib:${QFW_IMAGE_BASE}/QFw/DEFw/src:${QFW_IMAGE_BASE}/install/${QFW_IMAGE_BUILD_VERSION}/TNQVM/exatn/lib:${QFW_IMAGE_BASE}/install/${QFW_IMAGE_BUILD_VERSION}/TNQVM/xacc/lib:${QFW_IMAGE_BASE}/build/${QFW_IMAGE_BUILD_VERSION}/TNQVM/tnqvm/plugins:${QFW_IMAGE_BASE}/install/${QFW_IMAGE_BUILD_VERSION}/NWQSIM/lib
 
+# ----------------------------------------------------------------------
+# QRMI / QDMI shim dependencies
+#
+# Lower-level interface libraries the QFw front-end shim will route to;
+# see shared-dir/QFw/docs/qpu-frontend-contract.md. Placed after the QFw
+# build so iteration here does not invalidate the heavy QFw layer.
+# ----------------------------------------------------------------------
+
+ARG RUST_VERSION=1.91.0
+ENV CARGO_HOME=/opt/qfw/rust/cargo \
+    RUSTUP_HOME=/opt/qfw/rust/rustup
+RUN set -ex \
+    && mkdir -p "${CARGO_HOME}" "${RUSTUP_HOME}" \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --profile minimal \
+            --default-toolchain "${RUST_VERSION}" \
+    && chmod -R a+rwX /opt/qfw/rust
+ENV PATH=${CARGO_HOME}/bin:${PATH}
+
+RUN set -ex \
+    && dnf -y install ninja-build \
+    && dnf clean all \
+    && rm -rf /var/cache/yum \
+    && "${QFW_IMAGE_VENV}/bin/pip" install --no-cache-dir maturin
+
+ARG QRMI_REPO=https://github.com/qiskit-community/qrmi.git
+ARG QRMI_REF=main
+ARG QRMI_PREFIX=/opt/qfw/qrmi
+ARG QRMI_SPANK_REPO=https://github.com/qiskit-community/spank-plugins.git
+ARG QRMI_SPANK_REF=main
+RUN set -ex \
+    && git clone --depth=1 --branch "${QRMI_REF}" "${QRMI_REPO}" /tmp/qrmi \
+    && cd /tmp/qrmi \
+    && cargo build --locked --release --lib \
+    && mkdir -p "${QRMI_PREFIX}/lib" "${QRMI_PREFIX}/include" \
+    && cp target/release/libqrmi.so "${QRMI_PREFIX}/lib/" \
+    && (cp target/release/libqrmi.a "${QRMI_PREFIX}/lib/" 2>/dev/null || true) \
+    && cp qrmi.h "${QRMI_PREFIX}/include/" \
+    && . "${QFW_IMAGE_VENV}/bin/activate" \
+    && CARGO_TARGET_DIR=./target/release/maturin maturin build --release \
+    && pip install --no-cache-dir target/release/maturin/wheels/qrmi-*.whl \
+    && deactivate \
+    && git clone --depth=1 --branch "${QRMI_SPANK_REF}" \
+        "${QRMI_SPANK_REPO}" /tmp/spank-plugins \
+    && cd /tmp/spank-plugins/plugins/spank_qrmi \
+    && cmake -S . -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DQRMI_ROOT=/tmp/qrmi \
+    && cmake --build build \
+    && install -d /usr/lib64/slurm \
+    && find build -maxdepth 3 -name '*.so' -exec \
+        install -m 0755 {} /usr/lib64/slurm/ \; \
+    && rm -rf /tmp/qrmi /tmp/spank-plugins
+
+# QDMI-on-IQM — IQM's official QDMI implementation, installed as a wheel
+# into the QFw venv. The 'qiskit' extra wires up the Qiskit backend.
+RUN set -ex \
+    && "${QFW_IMAGE_VENV}/bin/pip" install --no-cache-dir 'iqm-qdmi[qiskit]'
+
+ENV QRMI_PREFIX=${QRMI_PREFIX} \
+    LD_LIBRARY_PATH=${QRMI_PREFIX}/lib:${LD_LIBRARY_PATH}
+
 COPY modulefiles /etc/modulefiles
 
 # TJN: Add a basic cgroup.conf b/c appears to be needed now
