@@ -277,26 +277,33 @@ ENV PATH=${CARGO_HOME}/bin:${PATH}
 RUN set -ex \
     && dnf -y install ninja-build \
     && dnf clean all \
-    && rm -rf /var/cache/yum \
-    && "${QFW_IMAGE_VENV}/bin/pip" install --no-cache-dir maturin
+    && rm -rf /var/cache/yum
 
+# QRMI: build the C library (libqrmi.so + qrmi.h) and the SLURM SPANK plugin
+# from source, then install the matching Python bindings from PyPI.
+#
+# A single QRMI_VERSION drives both the git tag (for the C library and the
+# SPANK plugin's QRMI_ROOT) and the PyPI release (for the Python bindings),
+# so the C ABI loaded by C/C++ shim consumers matches the bindings loaded
+# into the QFw venv.
+#
+# NOTE: upstream changed tag convention around the 0.14 release from
+# "vX.Y.Z" to "X.Y.Z" (no leading v). Use the unprefixed form for any
+# release >= 0.14.0; older releases need the "v" prefix.
 ARG QRMI_REPO=https://github.com/qiskit-community/qrmi.git
-ARG QRMI_REF=main
+ARG QRMI_VERSION=0.15.0
 ARG QRMI_PREFIX=/opt/qfw/qrmi
 ARG QRMI_SPANK_REPO=https://github.com/qiskit-community/spank-plugins.git
 ARG QRMI_SPANK_REF=main
 RUN set -ex \
-    && git clone --depth=1 --branch "${QRMI_REF}" "${QRMI_REPO}" /tmp/qrmi \
+    && git clone --depth=1 --branch "${QRMI_VERSION}" "${QRMI_REPO}" /tmp/qrmi \
     && cd /tmp/qrmi \
     && cargo build --locked --release --lib \
     && mkdir -p "${QRMI_PREFIX}/lib" "${QRMI_PREFIX}/include" \
     && cp target/release/libqrmi.so "${QRMI_PREFIX}/lib/" \
     && (cp target/release/libqrmi.a "${QRMI_PREFIX}/lib/" 2>/dev/null || true) \
     && cp qrmi.h "${QRMI_PREFIX}/include/" \
-    && . "${QFW_IMAGE_VENV}/bin/activate" \
-    && CARGO_TARGET_DIR=./target/release/maturin maturin build --release \
-    && pip install --no-cache-dir target/release/maturin/wheels/qrmi-*.whl \
-    && deactivate \
+    && "${QFW_IMAGE_VENV}/bin/pip" install --no-cache-dir "qrmi==${QRMI_VERSION}" \
     && git clone --depth=1 --branch "${QRMI_SPANK_REF}" \
         "${QRMI_SPANK_REPO}" /tmp/spank-plugins \
     && cd /tmp/spank-plugins/plugins/spank_qrmi \
