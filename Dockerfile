@@ -290,11 +290,14 @@ RUN set -ex \
 # NOTE: upstream changed tag convention around the 0.14 release from
 # "vX.Y.Z" to "X.Y.Z" (no leading v). Use the unprefixed form for any
 # release >= 0.14.0; older releases need the "v" prefix.
+# QRMI 0.16.0 and spank-plugins 0.7.0 are a matched release set (2026-06-08);
+# the 0.7.0 SPANK plugin carries significant error-handling updates. The
+# spank_qrmi build below links the locally-cloned QRMI via -DQRMI_ROOT.
 ARG QRMI_REPO=https://github.com/qiskit-community/qrmi.git
-ARG QRMI_VERSION=0.15.0
+ARG QRMI_VERSION=0.16.0
 ARG QRMI_PREFIX=/opt/qfw/qrmi
 ARG QRMI_SPANK_REPO=https://github.com/qiskit-community/spank-plugins.git
-ARG QRMI_SPANK_REF=main
+ARG QRMI_SPANK_REF=0.7.0
 RUN set -ex \
     && git clone --depth=1 --branch "${QRMI_VERSION}" "${QRMI_REPO}" /tmp/qrmi \
     && cd /tmp/qrmi \
