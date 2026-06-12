@@ -14,6 +14,10 @@ The environment supports two common workflows:
 This is not meant to model production HPC performance. It is meant to give a
 repeatable [Slurm], MPI, [libfabric], [DEFw], and [QFw] test environment.
 
+The image also includes the lower-level interface libraries that the [QFw]
+QPU front-end shim routes to: [QRMI] (Rust library, Python bindings, and the
+SLURM SPANK plugin) and [QDMI] (via IQM's `iqm-qdmi` reference implementation).
+
 ## Table Of Contents
 
 - [Build The Environment](#build-the-environment)
@@ -376,7 +380,13 @@ The image builds and installs:
 - prebuilt [TNQVM] and [NWQ-Sim] circuit runners:
   `circuit_runner.tnqvm` and `circuit_runner.nwqsim`
 - [QFw] build dependencies such as `cmake`, `gcc-gfortran`, `openblas-devel`,
-  `swig`, and `scons`
+  `swig`, `scons`, `ninja-build`, and a pinned Rust toolchain under
+  `/opt/qfw/rust`
+- [QRMI] runtime: `libqrmi.so` and `qrmi.h` under `/opt/qfw/qrmi/`, the `qrmi`
+  Python wheel installed into the [QFw] venv, and the SLURM SPANK plugin
+  installed into `/usr/lib64/slurm/`
+- [QDMI] runtime: IQM's `iqm-qdmi[qiskit]` wheel installed into the [QFw]
+  venv
 
 The image-level runtime environment includes:
 
@@ -390,7 +400,11 @@ The image-level runtime environment includes:
 /opt/qfw/qhpc/install/image/TNQVM/xacc/lib
 /opt/qfw/qhpc/build/image/TNQVM/tnqvm/plugins
 /opt/qfw/qhpc/install/image/NWQSIM/lib
+/opt/qfw/qrmi/lib
 ```
+
+`QRMI_PREFIX` is set to `/opt/qfw/qrmi` so consumers can locate the QRMI
+headers and shared library without hard-coding the path.
 
 `qfw_activate` is still explicit. The image entrypoint does not globally source
 it because activation rewires the Python environment.
@@ -727,6 +741,8 @@ If you only need to see what a helper would run:
 [NWQ-Sim]: https://github.com/pnnl/NWQ-Sim
 [OpenMPI]: https://github.com/open-mpi/ompi
 [PRRTE]: https://github.com/openpmix/prrte
+[QDMI]: https://pypi.org/project/iqm-qdmi/
 [QFw]: https://github.com/openQSE/QFw
+[QRMI]: https://github.com/qiskit-community/qrmi
 [Slurm]: https://github.com/SchedMD/slurm
 [TNQVM]: https://github.com/ornl-qci/tnqvm

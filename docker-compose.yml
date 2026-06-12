@@ -51,6 +51,11 @@ services:
       - var_log_slurm:/var/log/slurm
       - ./shared-dir:/mnt
       - ${QFW_CONTAINER_BASE}:/workspace/qfw-container-base
+      # Shim live-edit overlays: only the paths the shim touches, so we
+      # don't shadow image-built artifacts under DEFw/src/, etc.
+      - ./shared-dir/QFw/service-apis/api_qpm/qpu_frontend.py:/opt/qfw/qhpc/QFw/service-apis/api_qpm/qpu_frontend.py
+      - ./shared-dir/QFw/services/svc_iqm_qpm/drivers:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/drivers
+      - ./shared-dir/QFw/services/svc_iqm_qpm/svc_qrc.py:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/svc_qrc.py
     expose:
       - "6817"
     depends_on:
@@ -96,6 +101,11 @@ services:
       - var_log_slurm:/var/log/slurm
       - ./shared-dir:/mnt
       - ${QFW_CONTAINER_BASE}:/workspace/qfw-container-base
+      # Shim live-edit overlays: only the paths the shim touches, so we
+      # don't shadow image-built artifacts under DEFw/src/, etc.
+      - ./shared-dir/QFw/service-apis/api_qpm/qpu_frontend.py:/opt/qfw/qhpc/QFw/service-apis/api_qpm/qpu_frontend.py
+      - ./shared-dir/QFw/services/svc_iqm_qpm/drivers:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/drivers
+      - ./shared-dir/QFw/services/svc_iqm_qpm/svc_qrc.py:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/svc_qrc.py
     expose:
       - "6818"
     depends_on:
@@ -118,6 +128,11 @@ services:
       - var_log_slurm:/var/log/slurm
       - ./shared-dir:/mnt
       - ${QFW_CONTAINER_BASE}:/workspace/qfw-container-base
+      # Shim live-edit overlays: only the paths the shim touches, so we
+      # don't shadow image-built artifacts under DEFw/src/, etc.
+      - ./shared-dir/QFw/service-apis/api_qpm/qpu_frontend.py:/opt/qfw/qhpc/QFw/service-apis/api_qpm/qpu_frontend.py
+      - ./shared-dir/QFw/services/svc_iqm_qpm/drivers:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/drivers
+      - ./shared-dir/QFw/services/svc_iqm_qpm/svc_qrc.py:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/svc_qrc.py
     expose:
       - "6818"
     depends_on:
@@ -140,6 +155,11 @@ services:
       - var_log_slurm:/var/log/slurm
       - ./shared-dir:/mnt
       - ${QFW_CONTAINER_BASE}:/workspace/qfw-container-base
+      # Shim live-edit overlays: only the paths the shim touches, so we
+      # don't shadow image-built artifacts under DEFw/src/, etc.
+      - ./shared-dir/QFw/service-apis/api_qpm/qpu_frontend.py:/opt/qfw/qhpc/QFw/service-apis/api_qpm/qpu_frontend.py
+      - ./shared-dir/QFw/services/svc_iqm_qpm/drivers:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/drivers
+      - ./shared-dir/QFw/services/svc_iqm_qpm/svc_qrc.py:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/svc_qrc.py
     expose:
       - "6818"
     depends_on:
@@ -162,6 +182,11 @@ services:
       - var_log_slurm:/var/log/slurm
       - ./shared-dir:/mnt
       - ${QFW_CONTAINER_BASE}:/workspace/qfw-container-base
+      # Shim live-edit overlays: only the paths the shim touches, so we
+      # don't shadow image-built artifacts under DEFw/src/, etc.
+      - ./shared-dir/QFw/service-apis/api_qpm/qpu_frontend.py:/opt/qfw/qhpc/QFw/service-apis/api_qpm/qpu_frontend.py
+      - ./shared-dir/QFw/services/svc_iqm_qpm/drivers:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/drivers
+      - ./shared-dir/QFw/services/svc_iqm_qpm/svc_qrc.py:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/svc_qrc.py
     expose:
       - "6818"
     depends_on:
@@ -184,6 +209,11 @@ services:
       - var_log_slurm:/var/log/slurm
       - ./shared-dir:/mnt
       - ${QFW_CONTAINER_BASE}:/workspace/qfw-container-base
+      # Shim live-edit overlays: only the paths the shim touches, so we
+      # don't shadow image-built artifacts under DEFw/src/, etc.
+      - ./shared-dir/QFw/service-apis/api_qpm/qpu_frontend.py:/opt/qfw/qhpc/QFw/service-apis/api_qpm/qpu_frontend.py
+      - ./shared-dir/QFw/services/svc_iqm_qpm/drivers:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/drivers
+      - ./shared-dir/QFw/services/svc_iqm_qpm/svc_qrc.py:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/svc_qrc.py
     expose:
       - "6818"
     depends_on:
@@ -206,6 +236,11 @@ services:
       - var_log_slurm:/var/log/slurm
       - ./shared-dir:/mnt
       - ${QFW_CONTAINER_BASE}:/workspace/qfw-container-base
+      # Shim live-edit overlays: only the paths the shim touches, so we
+      # don't shadow image-built artifacts under DEFw/src/, etc.
+      - ./shared-dir/QFw/service-apis/api_qpm/qpu_frontend.py:/opt/qfw/qhpc/QFw/service-apis/api_qpm/qpu_frontend.py
+      - ./shared-dir/QFw/services/svc_iqm_qpm/drivers:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/drivers
+      - ./shared-dir/QFw/services/svc_iqm_qpm/svc_qrc.py:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/svc_qrc.py
     expose:
       - "6818"
     depends_on:
@@ -228,6 +263,11 @@ services:
       - var_log_slurm:/var/log/slurm
       - ./shared-dir:/mnt
       - ${QFW_CONTAINER_BASE}:/workspace/qfw-container-base
+      # Shim live-edit overlays: only the paths the shim touches, so we
+      # don't shadow image-built artifacts under DEFw/src/, etc.
+      - ./shared-dir/QFw/service-apis/api_qpm/qpu_frontend.py:/opt/qfw/qhpc/QFw/service-apis/api_qpm/qpu_frontend.py
+      - ./shared-dir/QFw/services/svc_iqm_qpm/drivers:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/drivers
+      - ./shared-dir/QFw/services/svc_iqm_qpm/svc_qrc.py:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/svc_qrc.py
     expose:
       - "6818"
     depends_on:
@@ -250,6 +290,11 @@ services:
       - var_log_slurm:/var/log/slurm
       - ./shared-dir:/mnt
       - ${QFW_CONTAINER_BASE}:/workspace/qfw-container-base
+      # Shim live-edit overlays: only the paths the shim touches, so we
+      # don't shadow image-built artifacts under DEFw/src/, etc.
+      - ./shared-dir/QFw/service-apis/api_qpm/qpu_frontend.py:/opt/qfw/qhpc/QFw/service-apis/api_qpm/qpu_frontend.py
+      - ./shared-dir/QFw/services/svc_iqm_qpm/drivers:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/drivers
+      - ./shared-dir/QFw/services/svc_iqm_qpm/svc_qrc.py:/opt/qfw/qhpc/QFw/services/svc_iqm_qpm/svc_qrc.py
     expose:
       - "6818"
     depends_on:

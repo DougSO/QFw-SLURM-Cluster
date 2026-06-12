@@ -1,3 +1,17 @@
 qfw-install.env
 .env
 *.swp
+
+# Build artifacts written into the bind-mounted shared-dir by the QFw build
+/shared-dir/build/
+/shared-dir/install/
+/shared-dir/source/
+/shared-dir/venv/
+/shared-dir/benchmarks/
+/shared-dir/rocm/
+
+# QFw is its own git repo (openQSE/QFw); don't track it from the outer repo
+/shared-dir/QFw/
+
+# SLURM job output captured in the shared dir
+/shared-dir/*.out
